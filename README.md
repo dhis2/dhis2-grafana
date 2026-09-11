@@ -16,11 +16,66 @@ metrics exposed by Spring Boot Actuator / Micrometer. It focuses on:
 
 ## Requirements
 
-Your DHIS2 instance must expose a Prometheus-scrapeable metrics endpoint
-(Spring Boot Actuator's `/actuator/prometheus`) with Micrometer bindings
-enabled, and Prometheus must be scraping it into a `job` label (the
-dashboard's variables default to discovering whatever `job`/`instance`
-values are present).
+- **DHIS2 2.37 or later.** DHIS2 core ships its own Prometheus metrics
+  endpoint at `GET /api/metrics`
+  ([`PrometheusScrapeEndpointController`](https://github.com/dhis2/dhis2-core/blob/master/dhis-2/dhis-web-api/src/main/java/org/hisp/dhis/webapi/controller/PrometheusScrapeEndpointController.java)),
+  backed by a Micrometer `PrometheusMeterRegistry`. This is **not** the
+  generic Spring Boot Actuator `/actuator/prometheus` path — it's DHIS2's own
+  controller, and it requires authentication (DHIS2 scrapes it like any other
+  API endpoint, with credentials on every request).
+- Prometheus (or a compatible remote-write/VictoriaMetrics-style backend)
+  scraping that endpoint into a datasource Grafana can query, with `job` and
+  `instance` labels present (the dashboard's variables discover whatever
+  values exist).
+
+### Enabling the metrics DHIS2 collects
+
+Each metric family is off by default and enabled independently in
+`dhis.conf` — see
+[`ConfigurationKey.java`](https://github.com/dhis2/dhis2-core/blob/master/dhis-2/dhis-support/dhis-support-external/src/main/java/org/hisp/dhis/external/conf/ConfigurationKey.java)
+for the authoritative list:
+
+```properties
+# HTTP request metrics (http_server_requests_seconds_*) — Hot/Slow/Errors sections
+monitoring.api.enabled = on
+
+# JVM metrics (jvm_*, process_*) — JVM & System section
+monitoring.jvm.enabled = on
+
+# CPU and uptime metrics — JVM & System section
+monitoring.cpu.enabled = on
+monitoring.uptime.enabled = on
+
+# Hibernate 2nd-level (Ehcache) cache region metrics — Ehcache section
+monitoring.ehcache.enabled = on
+
+# JDBC connection pool metrics (jdbc_connections_*) — JDBC Connection Pool section
+monitoring.dbpool.enabled = on
+db.pool.type = hikari   # default; the jdbc_connections_* naming only applies to HikariCP
+```
+
+(DHIS2 renames HikariCP's native `hikaricp.connections*` meters to
+`jdbc.connections*` internally for naming stability — see
+[`PrometheusMonitoringConfig`](https://github.com/dhis2/dhis2-core/blob/master/dhis-2/dhis-support/dhis-support-system/src/main/java/org/hisp/dhis/monitoring/metrics/PrometheusMonitoringConfig.java) —
+which is why the dashboard queries `jdbc_connections_*`, not
+`hikaricp_connections_*`.)
+
+### Example Prometheus scrape config
+
+This mirrors the production config used in
+[`dhis2-server-tools`](https://github.com/dhis2/dhis2-server-tools/blob/main/deploy/roles/monitoring/templates/scrape-configs.j2):
+
+```yaml
+scrape_configs:
+  - job_name: dhis2
+    metrics_path: /api/metrics
+    basic_auth:
+      username: <a DHIS2 user with API access>
+      password: <password>
+    static_configs:
+      - targets:
+          - <dhis2-host>:8080
+```
 
 Metric families this dashboard uses:
 
@@ -35,8 +90,9 @@ Metric families this dashboard uses:
   `jdbc_connections_{acquire,creation,usage}_seconds_*` (needs histogram
   buckets for the latency percentile panels)
 
-If a metric family isn't present on your instance, the corresponding panels
-will simply show no data — nothing else depends on them.
+If a metric family isn't present on your instance (because the corresponding
+`monitoring.*.enabled` flag is off), the corresponding panels will simply
+show no data — nothing else depends on them.
 
 ## Importing
 
