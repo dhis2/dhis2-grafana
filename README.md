@@ -46,7 +46,10 @@ and select your Prometheus datasource when prompted.
 
 The dashboard uses a `$datasource` template variable (so it isn't hardcoded
 to a specific datasource UID) plus `$job`, `$instance`, and `$method`
-filters, all defaulting to "All".
+filters, all defaulting to "All". It also carries the `__inputs`/`__requires`
+metadata block Grafana's own "Export for sharing externally" adds, so it
+imports cleanly through grafana.com's community dashboard uploader too (built
+and tested against Grafana 12.1.1).
 
 ## Notes
 
